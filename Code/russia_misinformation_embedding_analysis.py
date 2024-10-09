@@ -47,31 +47,6 @@ tokenizer = AutoTokenizer.from_pretrained('sentence-transformers/all-MiniLM-L6-v
 model = AutoModel.from_pretrained('sentence-transformers/all-MiniLM-L6-v2')
 model.eval()
 
-# Initialize tokenizer and model, #8/14 use DistilBERT
-#model_name = "distilbert-base-uncased"
-#tokenizer = DistilBertTokenizer.from_pretrained(model_name)
-#model = DistilBertModel.from_pretrained(model_name)
-#tokenizer = BertTokenizer.from_pretrained('bert-base-uncased')
-#model = BertModel.from_pretrained('bert-base-uncased')
-#model.eval()
-
-# Load text
-#file_path = '/content/drive/MyDrive/Colab Notebooks/Data/Cleaned Data Driven Gov_abstract.csv'
-#with open(file_path, 'r', encoding='utf-8') as f:
-    #text = f.read()
-#text = pd.read_csv(file_path, encoding = 'latin1')
-
-#initialize empty list for abstract years.
-#abstract_year = {}
-
-# Load Data #
-#gather years
-#for year in text['year'].unique():
-    #year_df = text[text['year'] == year]
-    #year_abstract = ' '.join(year_df['abstract'])
-
-#process Bert by Year
-#print(f"Year: {year}")
 file_path = '/content/drive/MyDrive/Diego_Colab Notebooks/Data/russia_after_48hrs_text_llcleaned.txt' ## use Lingyao's russia_before_48hrs_text_llcleaned
 
 with open(file_path, 'r', encoding='utf-8') as file:
