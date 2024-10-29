@@ -1,0 +1,190 @@
+---
+title: "Putin Interview Study Replication_v2"
+author: "Alina Hagen"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r libraries}
+library(readxl)
+library(tidyverse)
+library(networkD3)
+library(RColorBrewer)
+library(ggalluvial)
+library(extrafont)
+
+```
+
+
+```{r load}
+putin_interview_topics <- read_excel("topic_annotation_edit.xlsx")
+
+putin_interview_topics[1,] # Look at the first entry to get a sense of the dataset
+str(putin_interview_topics) # Look at the structure of the dataset
+
+colnames(putin_interview_topics) <- c("topic", "name", "umbrella", "count", "repersentation", "rep_docs") # Rename the column names to be simpler
+```
+
+```{r clean}
+umbrella_topics <- c(
+  "0" = "No Umbrella Specified",
+  "1" = "Putin_Russia",
+  "2" = "Criticism_West_US",
+  "3" = "Ukraine_War",
+  "4" = "Truth",
+  "5" = "Conspiracy US  \n politics discussion"
+)
+
+cleaned_topics <- putin_interview_topics %>%
+  separate_rows(umbrella, sep = ",") %>% #Split topics with multiple umbrellas into separate rows
+  group_by(topic) %>% #ensures further calculations are done by topic
+  mutate(count = count / n()) %>% #updates the count column, n() returns the amount of rows per topic (separate_rows may have created multiple rows for each topic), this line divides the original count by the amount of umbrellas the topic fell under. Dividing this count is needed as the flowcharts width is represented by its count, if a topic is associated with multiple umbrellas, this ensures that that sum of each of these stems is equal to the original count of the combined row
+  ungroup() %>% #ensures further calculations are not influenced by grouping
+  mutate(umbrella = recode(umbrella, !!!umbrella_topics)) %>% # Replace numeric umbrella values with plain text title
+  filter(umbrella != "No Umbrella Specified")%>% #remove this topic from the data
+  filter(umbrella != "Conspiracy US  \n politics discussion") #remove this topic from the data
+
+
+cleaned_topics[6, "umbrella"] <- "Truth" #value not replaced for some reason, manually replaced
+
+
+
+
+```
+
+```{r linking}
+# Nodes datafrane
+nodes <- data.frame(
+  name = unique(c(as.character(cleaned_topics$name), as.character(cleaned_topics$umbrella)))
+) #create a dataframe called nodes with one column - this column will include each unique topic and umbrella (56 total entries in the order of which they appear in cleaned_topics)
+
+nodes <- nodes %>%
+  mutate(id = row_number() - 1) 
+# add an id to the nodes dataframe starting at 0 and going to 55. this will be used as a numeric identifier when creating the links dataframe and later when creating the joint dataframe for the ggplot diagram
+
+links <- cleaned_topics %>% #create a dataframe called links using values from cleaned_topics
+  inner_join(nodes, by = c("name" = "name")) %>% #select the name columns in both nodes and cleaned_topics, but only select rows that are found in both datasets (this means, only the original 50 topics should be selected)
+  rename(source_id = id) #create a column called source_id that records that numeric id value of each topic from the nodes dataframe
+
+links <- links %>% #repeat the above, but for the umbrellas
+  inner_join(nodes, by = c("umbrella" = "name")) %>%
+  rename(target_id = id) %>% 
+  transmute(source = source_id, target = target_id, value = count) #create three columns, the first being the numeric id of each of the original 50 topics, the second being the numeric id for each of the umbrella terms, and the final being the count value from cleaned_topics
+```
+
+```{r networkD3}
+# Create a chart using the networkD3 library. This was the original method used to the create the BERT topic chart, however, this was eventually replaced with the ggplot2 variant, mostly because this chart was only useful in an interactive HTML environment. 
+
+sankeyNetwork(
+  Links = links,
+  Nodes = nodes,
+  Source = "source",
+  Target = "target",
+  Value = "value",
+  NodeID = "name",
+  fontSize = 15,
+  nodeWidth = 10
+)
+
+```
+
+```{r ggplot}
+sankey_df <- links %>% # Create a combined dataset of links and nodes, based on the numeric id
+  inner_join(nodes, by = c("source" = "id")) %>% #select the numeric code for the source in both the links df and the nodes df, only include rows found in both data frames 
+  rename(source_name = name) %>% # create a new column based on those numeric codes that records the catagorical code
+  inner_join(nodes, by = c("target" = "id")) %>% # repeat this process for the umbrella targets
+  rename(target_name = name) #record the catagorical code of the umbrella target in a new column
+
+#3 topics are too small and they are rendering on topic of each other in the chart. This code manually combines these three topics into one strand, as they are all going towards the same umbrella topic
+new_row <- data.frame(
+  "source" = "29,30,21", 
+  "target" = 32,
+  "value" = 537.0000,
+  "source_name" = "Topic 47, 48, and 48",
+  "target_name" = "Truth")
+
+sankey_df <- sankey_df[-c(40,41,42), ] #Remove the original 3 topic rows from the dataset
+sankey_df <- rbind (new_row,sankey_df) # Add the combined row of those 3 topics to the dataset
+
+# Manually update the topic names to be cleaner + add a Repersentation term
+sankey_df$topic_name <- c(
+  "Topics 47, 48, and 49**",
+  "00: Putin, Interview, Vladimir, Interviews, Russian",
+  "01: Ukraine, Dollars, Funding, Money, Fund",
+  "02: Border, Borders, Ukraine, Bill, Immigration",
+  "03: Putin, Tucker, Interviews, Interview, Interviewed",
+  "05: Putin, KGB, Vladimir, Russia, Dictator",   
+  "05: Putin, KGB, Vladimir, Russia, Dictator", 
+  "06: NATO, Allies, Alliance, Russia, Putin",
+  "06: NATO, Allies, Alliance, Russia, Putin",
+  "08: Ukraine War, Ukraine-Russia War,\n Ukraine, Missiles, Kyiv",
+  "09: Ukraine, Ukrainians, Ukrainian, Russia, Russians",
+  "11: Ukraine, Russia, Supporting, Support, Democracy",
+  "12: Putin, Propaganda, Trump, CIA, Believe",
+  "15: Putin, Russia, Russian, History, Historical",
+  "17: Ukraine, Crimea, Ukrainian, Ukrainians, Putin",
+  "19: Putin, Biden, Vladimir, Russia, Trump",
+  "20: Senate, Bipartisan, Aid, Senators, Senator",
+  "22: Traitor, Traitors, Putin, Treason, Russia",
+  "23: Ukraine, Putin, Crimea, Russia, Ukrainian",
+  "23: Ukraine, Putin, Crimea, Russia, Ukrainian",
+  "23: Ukraine, Putin, Crimea, Russia, Ukrainian",
+  "24: Aid, Ukraine, Funding, Assistance, Support",
+  "25: Poland, Polish, Lithuania, Ukraine, Latvia",
+  "25: Poland, Polish, Lithuania, Ukraine, Latvia",
+  "26: Putin, Russia, Trump, Russian, Dictator",
+  "28: Ukraine, Ukrainians, Ukrainian, War, Kyiv",
+  "30: Putin, MAGA, Russian, Russia, MAGAs",
+  "30: Putin, MAGA, Russian, Russia, MAGAs",
+  "30: Putin, MAGA, Russian, Russia, MAGAs",
+  "33: Ukraine, Crimea, Boris, Putin, Ukrainian",
+  "34: Putin, Propaganda, Media, Russia, Journalism",
+  "35: Putin, Russia, NATO, Ukraine, Syria",
+  "35: Putin, Russia, NATO, Ukraine, Syria",
+  "35: Putin, Russia, NATO, Ukraine, Syria",
+  "36: Russia, Putin, Russian, Enemy, America",
+  "38: Russia, Moscow, Move, Moving, Stay",
+  "39: Currency, Dollar, USD, Putin, Sanctions",
+  "39: Currency, Dollar, USD, Putin, Sanctions",
+  "40: Putin, Russian, Trump, Vladimir, Russia",
+  "41: Orthodox, Putin, Bolshevik, Russian, Russians"
+)
+
+
+target_colors <- setNames(
+  colorRampPalette(brewer.pal(11, "Spectral"))(length(unique(sankey_df$target_name))), unique(sankey_df$target_name)
+) #assign colors to each of the umbrella targets 
+
+```
+
+
+
+``` {R plot}
+p <- ggplot(sankey_df, aes(axis1 = target_name, axis2 = topic_name, y = value)) +
+  geom_alluvium(aes(fill = target_name), width = 0.5) + #Colors the central strands based on the umbrella target
+  #geom_stratum(width = 0.15, color = "gray30", alpha = 0.25) + # ADDS left and righthand panels
+  geom_text(stat = "stratum", aes(label = after_stat(stratum)), size = 2.53, hjust = 0.75, family = "Times New Roman") + #controls text size
+  scale_x_discrete(limits = c("Target", "Source"), expand = c(0.15,0)) + #controls width of chart
+  scale_fill_manual(values = target_colors, name = "Topic Category") + #sets topic colors based on colors set previously
+  theme_light() +
+  theme(
+    legend.position = "none",
+    plot.title = element_text( size = 15, hjust = 0.5, face = "bold", family = "Times New Roman"), 
+    plot.background = element_rect(fill="white", color = NA),
+    panel.background = element_rect(fill = "white", color = NA),
+    plot.margin = unit(c(0.1 , 0.59 ,0.1 ,0.1), "cm"),
+    plot.caption = element_text(size = 8, family = "Times New Roman"),
+    axis.title = element_text(size = 8, family = "Times New Roman")
+        ) +
+  labs(title = "Umbrella Topics and BERT Topics", y = "Count", caption = "Topic 47: Putin, Russian, Vladimir, CIA \n Topic 48: Musk, Putin, Trump, Russia \n Topic 49: Putin, Trudeau, Ukrainian, Russian") 
+
+
+
+```
+
+```{r file_save}
+# Saves ggplot chart
+ggsave("Carlson-Interview-BERT-chart.png", plot = p, width = 8, height = 6.7)
+
+```
+
